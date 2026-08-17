@@ -1,0 +1,351 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mini ILS | Live Runway Alignment</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#07111f;color:#fff}
+header{padding:22px 30px;background:#0d1b2e;border-bottom:1px solid #29445e}
+header h1{margin:0;font-size:28px}
+header p{margin:7px 0;color:#9fb3c8}
+.top{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
+.badge{padding:8px 14px;border-radius:20px;background:#142942;font-size:13px}
+.online{color:#38e57b}
+main{max-width:1500px;margin:auto;padding:25px}
+.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:20px}
+.card{background:#0d1b2e;border:1px solid #29445e;border-radius:15px;padding:20px;margin-bottom:20px}
+.card h2{margin-top:0;font-size:20px}
+.runway-area{position:relative;height:560px;background:#081522;border-radius:14px;overflow:hidden}
+.runway{position:absolute;left:50%;transform:translateX(-50%);width:55%;height:100%;background:#4b5056;border-left:7px solid white;border-right:7px solid white}
+.centerline{position:absolute;left:50%;transform:translateX(-50%);width:5px;height:100%;background:repeating-linear-gradient(to bottom,white 0,white 40px,transparent 40px,transparent 80px)}
+.rwy-title{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:25px;font-weight:bold}
+.aircraft{position:absolute;left:50%;top:80px;transform:translateX(-50%);font-size:48px;transition:left .7s ease;z-index:5}
+.node{position:absolute;top:50%;transform:translateY(-50%);width:70px;height:70px;border-radius:50%;display:flex;justify-content:center;align-items:center;font-weight:bold;border:4px solid white}
+.left-node{left:5%;background:#d98c00}.center-node{left:50%;transform:translate(-50%,-50%);background:#18a957}.right-node{right:5%;background:#d73737}
+.alignment{text-align:center;padding:25px;border-radius:12px;background:#12301f}
+.alignment h3{font-size:30px;margin:12px 0;color:#38e57b}
+.alignment p{color:#b9c9d9}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}
+button{border:0;border-radius:8px;padding:12px 18px;cursor:pointer;font-weight:bold;background:#1976d2;color:white}
+button:hover{opacity:.85}
+.nodes{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
+.node-card{background:#102238;padding:15px;border-radius:12px;border:1px solid #29445e}
+.node-card h3{margin-top:0}.green{color:#38e57b}
+.signal{margin:15px 0}.signal-head{display:flex;justify-content:space-between;margin-bottom:6px}
+.bar{height:12px;background:#1e3043;border-radius:10px;overflow:hidden}.fill{height:100%;border-radius:10px;transition:width .4s ease}
+.left-fill{background:#e6a23c}.center-fill{background:#35d978}.right-fill{background:#e34b4b}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.metric{background:#102238;padding:15px;border-radius:10px}
+.metric strong{display:block;font-size:22px;margin-top:6px}
+.pipeline{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.stage{background:#142942;padding:14px;border-radius:10px;text-align:center}.arrow{font-size:22px;color:#38e57b}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:10px;border-bottom:1px solid #29445e;text-align:center}.table th{color:#9fb3c8}
+.hysteresis{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.h-box{background:#102238;padding:15px;border-radius:10px}
+.h-box strong{display:block;font-size:22px;margin-top:6px}
+.alert{text-align:center;padding:20px;border-radius:12px;background:#102238}.alert-value{font-size:26px;font-weight:bold;margin:8px}
+.log{max-height:220px;overflow-y:auto;background:#07111f;padding:12px;border-radius:10px;font-family:monospace;font-size:13px}
+.log div{padding:5px 0;border-bottom:1px solid #17283b}
+.status{padding:10px;border-radius:8px;background:#102238;margin-bottom:12px}
+.good{color:#38e57b}.bad{color:#ff6b6b}
+canvas{width:100%!important;height:350px!important;background:#081522;border-radius:10px}
+input{width:100%;padding:10px;border-radius:8px;border:1px solid #29445e;background:#07111f;color:#fff}
+footer{text-align:center;padding:25px;color:#71869c}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.nodes{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){main{padding:12px}.metrics{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<h1>✈ RUNWAY ALIGNMENT GUIDANCE SYSTEM</h1>
+<p>Mini ILS — 3 Real ESP32 Nodes + Median Filtering + RSSI Fingerprint + Hysteresis</p>
+<div class="top">
+<div class="badge">SYSTEM: <span id="systemStatus" class="online">STARTING</span></div>
+<div class="badge">NODES: <span id="nodeCount">0 / 3</span></div>
+<div class="badge">FILTER: MEDIAN-5</div>
+<div class="badge">HYSTERESIS: ACTIVE</div>
+</div>
+</header>
+
+<main>
+<div class="grid">
+<div class="card">
+<h2>Live Runway Visualization</h2>
+<div class="runway-area">
+<div class="runway"><div class="centerline"></div><div class="rwy-title">RWY 27</div><div id="aircraft" class="aircraft">✈</div></div>
+<div class="node left-node">LEFT</div>
+<div class="node center-node">CENTER</div>
+<div class="node right-node">RIGHT</div>
+</div>
+</div>
+
+<div>
+<div class="card">
+<h2>Final Alignment Decision</h2>
+<div id="alignmentBox" class="alignment">
+<div>CURRENT STATUS</div>
+<h3 id="decision">WAITING FOR DATA</h3>
+<p id="guidance">Waiting for all three ESP32 nodes.</p>
+</div>
+</div>
+
+<div class="card">
+<h2>Deviation Angle</h2>
+<div class="metrics">
+<div class="metric">Angle<strong id="angle">—</strong></div>
+<div class="metric">Side<strong id="angleSide">—</strong></div>
+<div class="metric">Lateral Offset<strong id="offset">—</strong></div>
+<div class="metric">L–R Differential<strong id="diff">—</strong></div>
+</div>
+<p style="color:#9fb3c8">Angle model: atan2(|lateral offset|, longitudinal distance). The RSSI-to-distance coefficient must be experimentally calibrated.</p>
+</div>
+
+<div class="card">
+<h2>Physical Alert</h2>
+<div class="alert">
+<div>LED / BUZZER DECISION</div>
+<div id="alertValue" class="alert-value">WAITING</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>3-Node ESP32 Network</h2>
+<div class="nodes">
+<div class="node-card"><h3>ESP32 #1 — LEFT</h3><p id="statusL">● OFFLINE</p><p>Raw RSSI: <strong id="rawL">—</strong></p><p>Filtered: <strong id="filtL">—</strong></p><p>IP: <strong id="ipL">—</strong></p></div>
+<div class="node-card"><h3>ESP32 #2 — CENTER</h3><p id="statusC">● OFFLINE</p><p>Raw RSSI: <strong id="rawC">—</strong></p><p>Filtered: <strong id="filtC">—</strong></p><p>IP: <strong id="ipC">—</strong></p></div>
+<div class="node-card"><h3>ESP32 #3 — RIGHT</h3><p id="statusR">● OFFLINE</p><p>Raw RSSI: <strong id="rawR">—</strong></p><p>Filtered: <strong id="filtR">—</strong></p><p>IP: <strong id="ipR">—</strong></p></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Filtered RSSI</h2>
+<div class="signal"><div class="signal-head"><span>LEFT</span><span id="lv">—</span></div><div class="bar"><div id="lb" class="fill left-fill"></div></div></div>
+<div class="signal"><div class="signal-head"><span>CENTER</span><span id="cv">—</span></div><div class="bar"><div id="cb" class="fill center-fill"></div></div></div>
+<div class="signal"><div class="signal-head"><span>RIGHT</span><span id="rv">—</span></div><div class="bar"><div id="rb" class="fill right-fill"></div></div></div>
+</div>
+
+<div class="card">
+<h2>Live RSSI Trend</h2>
+<canvas id="liveChart"></canvas>
+</div>
+
+<div class="card">
+<h2>RSSI Fingerprint</h2>
+<p style="color:#9fb3c8">Current filtered left/center/right profile. A true runway fingerprint should be obtained from measured calibration data.</p>
+<canvas id="fingerprintChart"></canvas>
+</div>
+
+<div class="card">
+<h2>Signal Processing Pipeline</h2>
+<div class="pipeline">
+<div class="stage">REAL RSSI</div><div class="arrow">→</div>
+<div class="stage">MEDIAN<br><strong>5 SAMPLES</strong></div><div class="arrow">→</div>
+<div class="stage">FILTERED RSSI</div><div class="arrow">→</div>
+<div class="stage">L–R DIFFERENTIAL</div><div class="arrow">→</div>
+<div class="stage">CALIBRATED OFFSET</div><div class="arrow">→</div>
+<div class="stage">HYSTERESIS</div><div class="arrow">→</div>
+<div class="stage">FINAL DECISION</div>
+</div>
+</div>
+
+<div class="card">
+<h2>Calibration Parameters</h2>
+<div class="hysteresis">
+<div class="h-box">Longitudinal Distance (m)<input id="distance" type="number" step="0.1" value="50"></div>
+<div class="h-box">RSSI differential per metre (dB/m)<input id="dbm" type="number" step="0.01" value="2.0"></div>
+</div>
+<p style="color:#9fb3c8">Changing these values in the webpage is for model tuning. For a defensible angle, measure the relationship experimentally and update the Flask server values.</p>
+</div>
+
+<div class="card">
+<h2>Hysteresis</h2>
+<div class="metrics">
+<div class="metric">Enter<strong>4 dB</strong></div>
+<div class="metric">Exit<strong>2 dB</strong></div>
+<div class="metric">State<strong id="hstate">—</strong></div>
+<div class="metric">Data Age<strong id="age">—</strong></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Median Window</h2>
+<table class="table">
+<thead><tr><th>Node</th><th>Current Filtered</th><th>Last Raw</th></tr></thead>
+<tbody id="medianBody"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Live Event Log</h2>
+<div id="log" class="log"></div>
+</div>
+</main>
+
+<footer>Mini ILS | Real ESP32 acquisition | Ubuntu Flask gateway | Calibrated angle model</footer>
+
+<script>
+const liveCtx = document.getElementById("liveChart").getContext("2d");
+const fpCtx = document.getElementById("fingerprintChart").getContext("2d");
+
+const labels = [];
+const series = {LEFT:[], CENTER:[], RIGHT:[]};
+
+const liveChart = new Chart(liveCtx,{
+ type:"line",
+ data:{labels,datasets:[
+  {label:"LEFT",data:series.LEFT,borderColor:"#e6a23c",tension:.25,pointRadius:0},
+  {label:"CENTER",data:series.CENTER,borderColor:"#35d978",tension:.25,pointRadius:0},
+  {label:"RIGHT",data:series.RIGHT,borderColor:"#e34b4b",tension:.25,pointRadius:0}
+ ]},
+ options:{responsive:true,animation:false,scales:{
+  y:{title:{display:true,text:"RSSI (dBm)"},min:-100,max:-20},
+  x:{title:{display:true,text:"Time"}}
+ }}
+});
+
+const fpChart = new Chart(fpCtx,{
+ type:"line",
+ data:{labels:["LEFT","CENTER","RIGHT"],datasets:[
+  {label:"Filtered RSSI",data:[null,null,null],borderColor:"#35d978",backgroundColor:"rgba(53,217,120,.12)",fill:true,tension:.2,pointRadius:5}
+ ]},
+ options:{responsive:true,animation:false,scales:{
+  y:{title:{display:true,text:"RSSI (dBm)"},min:-100,max:-20}
+ }}
+});
+
+function log(msg){
+ const d=document.createElement("div");
+ d.textContent=new Date().toLocaleTimeString()+" — "+msg;
+ document.getElementById("log").prepend(d);
+ while(document.getElementById("log").children.length>80)
+   document.getElementById("log").lastChild.remove();
+}
+
+function pct(r){return Math.max(0,Math.min(100,((r+90)/70)*100));}
+
+function setNode(name,d){
+ const map={
+  LEFT:["statusL","rawL","filtL","ipL","lb","lv"],
+  CENTER:["statusC","rawC","filtC","ipC","cb","cv"],
+  RIGHT:["statusR","rawR","filtR","ipR","rb","rv"]
+ };
+ const [s,raw,filt,ip,bar,val]=map[name];
+ const online=d.connected;
+ document.getElementById(s).innerHTML=online?'<span class="good">● CONNECTED</span>':'<span class="bad">● OFFLINE</span>';
+ document.getElementById(raw).textContent=d.rawRSSI!=null?d.rawRSSI.toFixed(0)+" dBm":"—";
+ document.getElementById(filt).textContent=d.filteredRSSI!=null?d.filteredRSSI.toFixed(1)+" dBm":"—";
+ document.getElementById(ip).textContent=d.ip||"—";
+ const p=d.filteredRSSI!=null?pct(d.filteredRSSI):0;
+ document.getElementById(bar).style.width=p+"%";
+ document.getElementById(val).textContent=d.filteredRSSI!=null?d.filteredRSSI.toFixed(1)+" dBm":"—";
+}
+
+function decisionUI(d){
+ const state=d.decision;
+ const box=document.getElementById("alignmentBox");
+ const dec=document.getElementById("decision");
+ const guide=document.getElementById("guidance");
+ const alert=document.getElementById("alertValue");
+
+ document.getElementById("hstate").textContent=state;
+
+ if(state==="CENTER"){
+  document.getElementById("aircraft").style.left="50%";
+  box.style.background="#12301f";
+  dec.style.color="#38e57b";
+  dec.textContent="ON CENTERLINE";
+  guide.textContent="Estimated alignment is within the hysteresis center state.";
+  alert.textContent="🟢 BUZZER OFF";
+ } else if(state==="LEFT"){
+  document.getElementById("aircraft").style.left="40%";
+  box.style.background="#332712";
+  dec.style.color="#e6a23c";
+  dec.textContent="DRIFTING LEFT";
+  guide.textContent="Correct RIGHT.";
+  alert.textContent="🟠 BUZZER ON";
+ } else {
+  document.getElementById("aircraft").style.left="60%";
+  box.style.background="#351919";
+  dec.style.color="#e34b4b";
+  dec.textContent="DRIFTING RIGHT";
+  guide.textContent="Correct LEFT.";
+  alert.textContent="🔴 BUZZER ON";
+ }
+}
+
+function updateCharts(d){
+ const now=new Date().toLocaleTimeString();
+ labels.push(now);
+ series.LEFT.push(d.nodes.LEFT.filteredRSSI ?? null);
+ series.CENTER.push(d.nodes.CENTER.filteredRSSI ?? null);
+ series.RIGHT.push(d.nodes.RIGHT.filteredRSSI ?? null);
+
+ if(labels.length>60){
+  labels.shift();
+  series.LEFT.shift();series.CENTER.shift();series.RIGHT.shift();
+ }
+ liveChart.update("none");
+
+ fpChart.data.datasets[0].data=[
+  d.nodes.LEFT.filteredRSSI ?? null,
+  d.nodes.CENTER.filteredRSSI ?? null,
+  d.nodes.RIGHT.filteredRSSI ?? null
+ ];
+ fpChart.update("none");
+}
+
+function updateMedianTable(d){
+ document.getElementById("medianBody").innerHTML=
+ ["LEFT","CENTER","RIGHT"].map(n=>{
+   const x=d.nodes[n];
+   return `<tr><td>${n}</td><td>${x.filteredRSSI!=null?x.filteredRSSI.toFixed(1):"—"} dBm</td><td>${x.rawRSSI!=null?x.rawRSSI.toFixed(0):"—"} dBm</td></tr>`;
+ }).join("");
+}
+
+async function refresh(){
+ try{
+  const r=await fetch("/api/data",{cache:"no-store"});
+  const d=await r.json();
+
+  document.getElementById("nodeCount").textContent=d.connected_nodes+" / 3";
+  document.getElementById("systemStatus").textContent=d.connected_nodes===3?"● ONLINE":"● PARTIAL";
+
+  setNode("LEFT",d.nodes.LEFT);
+  setNode("CENTER",d.nodes.CENTER);
+  setNode("RIGHT",d.nodes.RIGHT);
+
+  if(d.angle.angle_deg!=null){
+   const sign=d.angle.angle_side==="LEFT"?"-":d.angle.angle_side==="RIGHT"?"+":"";
+   document.getElementById("angle").textContent=sign+d.angle.angle_deg.toFixed(3)+"°";
+   document.getElementById("angleSide").textContent=d.angle.angle_side;
+   document.getElementById("offset").textContent=d.angle.lateral_offset_m.toFixed(3)+" m";
+   document.getElementById("diff").textContent=d.angle.differential_db.toFixed(2)+" dB";
+  }
+
+  document.getElementById("distance").value=d.calibration.distance_m;
+  document.getElementById("dbm").value=d.calibration.db_per_meter;
+
+  const age=Math.max(0,(Date.now()-d.timestamp*1000)/1000);
+  document.getElementById("age").textContent=age.toFixed(1)+" s";
+
+  decisionUI(d.decision);
+  updateCharts(d);
+  updateMedianTable(d);
+ }catch(e){
+  document.getElementById("systemStatus").textContent="● SERVER ERROR";
+  log("Cannot read /api/data: "+e.message);
+ }
+}
+
+log("Dashboard started");
+setInterval(refresh,1000);
+refresh();
+</script>
+</body>
+</html>
